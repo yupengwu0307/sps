@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="utf-8" />
+    <title>患者筛选流程图（SVG 导出）</title>
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <style>
+        body { 
+            background:#343541; 
+            color:#eee; 
+            font-family:Helvetica,Arial,sans-serif; 
+            margin:0; 
+            padding:24px;
+        }
+        .card { 
+            max-width:1100px; 
+            margin:0 auto; 
+            background:#2f3037; 
+            border-radius:12px; 
+            padding:18px; 
+            box-shadow:0 6px 24px rgba(0,0,0,.35);
+        }
+        h1 { 
+            margin:0 0 8px 0; 
+            font-weight:600; 
+            font-size:20px;
+            color:#fff;
+        }
+        .btns { 
+            display:flex; 
+            gap:12px; 
+            margin:10px 0 16px 0; 
+            flex-wrap:wrap;
+        }
+        button { 
+            background:#10a37f; 
+            color:#fff; 
+            border:none; 
+            padding:10px 14px; 
+            border-radius:8px; 
+            cursor:pointer; 
+            font-size:14px;
+        }
+        button.secondary { 
+            background:#5e6279; 
+        }
+        .hint { 
+            color:#cfd3dc; 
+            font-size:13px; 
+            margin-bottom:10px;
+        }
+        #graph { 
+            background:#343541; 
+            border-radius:10px; 
+            padding:12px; 
+            overflow:auto; 
+        }
+        svg { 
+            background:#343541; 
+        }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <h1>患者筛选流程图（DOT → SVG）</h1>
+        <div class="hint">已内置DOT文本，打开即渲染。点击"下载SVG"即可保存图片。</div>
+        <div class="btns">
+            <button id="download">下载SVG</button>
+            <button id="rerender" class="secondary">重新渲染</button>
+        </div>
+        <div id="graph">正在渲染…</div>
+        <textarea id="dot" style="display:none;">
+digraph cohort_selection {
+    rankdir=TB;
+    graph [bgcolor="#343541"];
+    node [style="filled,rounded", shape="rectangle", gradientangle=270, color="gray", fillcolor="white:lightgray", fontname="Helvetica", fontcolor="#343541"];
+    edge [color="#AAAAAA", fontname="Helvetica", fontsize=12, fontcolor="#EEEEEE", arrowsize=1];
+
+    A [label="MIMIC-IV v3.1"];
+    B [label="医院模块 (diagnoses_icd)"];
+    C [label="成人 >=18 岁"];
+    D [label="每位患者的指数住院次数"];
+    E [label="指数入院内：首次 ICU 住院"];
+    F [label="ICU 数据存在？", shape="diamond"];
+    G [label="排除：无 ICU 数据", fillcolor="#F4C2C2"];
+    H [label="符合 ICU 标准\n(n = 4396)"];
+    I [label="ICU 入院后 24 小时内首次全血细胞计数\n搭配血小板 + 白细胞\n(相同样本/时间)？", shape="diamond"];
+    J [label="排除:\n缺失第一个 CBC 血小板 + WBC 对\n(n = 218)", fillcolor="#F4C2C2"];
+    K [label="PWR 分析的最终分析队列\n(n = 4178)", fillcolor="#B4D7A8"];
+    L [label="Q1 (n = P1)\nPWR < 14.6", fillcolor="#FED8B1"];
+    M [label="Q2 (n = P2)\n14.6 <= PWR < 20.7", fillcolor="#FDFD96"];
+    N [label="Q3 (n = P3)\n20.7 <= PWR < 27.9", fillcolor="#AEC6CF"];
+    O [label="Q4 (n = P4)\nPWR >= 27.9", fillcolor="#CDB4DB"];
+
+    A -> B -> C -> D -> E -> F;
+    F -> G [label="否"];
+    F -> H [label="是"];
+    H -> I;
+    I -> J [label="否"];
+    I -> K [label="是"];
+    K -> L;
+    K -> M;
+    K -> N;
+    K -> O;
+}
+        </textarea>
+    </div>
+
+    <!-- Viz.js (Graphviz in WebAssembly) CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/viz.js@2.1.2/viz.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/viz.js@2.1.2/full.render.js"></script>
+    <script>
+        let viz;
+        const graphEl = document.getElementById('graph');
+        const dotEl = document.getElementById('dot');
+
+        function render() {
+            graphEl.textContent = '正在渲染…';
+            if (!viz) {
+                viz = new Viz({ workerURL: 'https://cdn.jsdelivr.net/npm/viz.js@2.1.2/full.render.js' });
+            }
+            
+            viz.renderSVGElement(dotEl.value.trim())
+                .then(svg => {
+                    svg.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
+                    graphEl.innerHTML = '';
+                    graphEl.appendChild(svg);
+                })
+                .catch(err => {
+                    graphEl.textContent = '渲染失败：' + err.message + '（可点击"重新渲染"重试）';
+                    viz = new Viz({workerURL: 'https://cdn.jsdelivr.net/npm/viz.js@2.1.2/full.render.js'});
+                });
+        }
+
+        function downloadSVG() {
+            const svg = graphEl.querySelector('svg');
+            if (!svg) return;
+            
+            const serializer = new XMLSerializer();
+            let source = serializer.serializeToString(svg);
+            
+            if (!source.match(/^<svg[^>]+xmlns=/)) {
+                source = source.replace(/^<svg/, '<svg xmlns="http://www.w3.org/2000/svg"');
+            }
+            
+            const blob = new Blob([source], {type: 'image/svg+xml;charset=utf-8'});
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'cohort_selection.svg';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }
+
+        document.getElementById('download').addEventListener('click', downloadSVG);
+        document.getElementById('rerender').addEventListener('click', render);
+
+        render();
+    </script>
+</body>
+</html>
